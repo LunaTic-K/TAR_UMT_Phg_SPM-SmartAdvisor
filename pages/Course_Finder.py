@@ -310,8 +310,8 @@ def show_results_popup(is_pass_bm_sj, total_credits):
         if st.button(":material/analytics: View Recommendations", use_container_width=True):
             if 'user_data' in st.session_state:
                 st.session_state['user_data']['eligible'] = True
-            st.session_state['go_to_rec'] = True
-            st.rerun()
+                st.session_state['go_to_rec'] = True
+                st.rerun()
             else:
                 st.error("Data is missing! Please fill the form again.")
     
