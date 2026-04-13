@@ -45,7 +45,7 @@ pg.run()
 # 6. Footer
 footer_html = """
 <div class="footer">
-    <p>© 2026 Developed by Dini</p>
+    <p>© 2026 Developed by DHX</p>
 </div>
 """
 st.markdown(footer_html, unsafe_allow_html=True)
