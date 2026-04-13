@@ -312,7 +312,9 @@ def show_results_popup(is_pass_bm_sj, total_credits):
                 st.session_state['user_data']['eligible'] = True
             st.session_state['go_to_rec'] = True
             st.rerun()
-
+            else:
+                st.error("Data is missing! Please fill the form again.")
+    
 
 if st.button("Process My Path", use_container_width=True):
     # 1. Check if name is empty
@@ -383,7 +385,6 @@ if st.button("Process My Path", use_container_width=True):
             
         except PermissionError:
             st.error(":material/lock: Close 'consultation_logs.csv' first!")
-
 
 if st.session_state.get('go_to_rec'):
     st.session_state['go_to_rec'] = False
