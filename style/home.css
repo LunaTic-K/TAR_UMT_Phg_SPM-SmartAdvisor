@@ -1,0 +1,125 @@
+
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+
+.card {
+    background-color: white;
+    padding: 25px;
+    border-radius: 12px;
+    border-left: 5px solid #1e3c72;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.icon-style {
+    vertical-align: middle;
+    color: #1e3c72;
+    font-size: 32px !important;
+    margin-right: 10px;
+}
+
+
+/* The Full Page Bg*/
+.stApp {
+    background-color: rgb(255, 255, 255);
+}
+
+/* Blue Hero Section */
+.blue-hero-container {
+    background: linear-gradient(100deg, #1e3c72 0%, #617be3 100%);
+    color: white;
+    padding: 40px;
+    border-radius: 15px;
+    margin: 10px 0px;
+    display: flex;
+    align-items: flex-start;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.hero-icon {
+    font-size: 48px !important;
+    color: white;
+    margin-right: 25px;
+    margin-top: 5px;
+}
+
+.hero-content h3 {
+    color: white !important;
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-weight: 700;
+}
+
+.hero-content p {
+    color: rgba(255, 255, 255, 0.9);
+    line-height: 1.6;
+    margin-bottom: 0;
+}
+
+/* Mission/Vision Cards */
+.card {
+    background: linear-gradient(100deg, #1e3c72 0%, #617be3 100%);
+    padding: 25px;
+    border-radius: 12px;
+    color: white;
+    border-left: 5px solid white;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    height: 100%;
+}
+
+.icon-style {
+    vertical-align: middle;
+    color: white;
+    font-size: 28px !important;
+    margin-right: 8px;
+}
+
+.team-card {
+    text-align: center;
+    padding: 30px;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.role-badge {
+    background-color: #e3f2fd;
+    color: white;
+    padding: 5px 15px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.center-icon {
+    margin-bottom: 15px;
+}
+.team-card {
+    text-align: center;
+    padding: 25px;
+    color:white;
+    background: linear-gradient(100deg, #1e3c72 0%, #617be3 100%);
+    border-radius: 15px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    border: 1px solid #eee;
+}
+
+.role-badge {
+    background-color: #ffffff;
+    color: #1e3c72;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+    display: inline-block;
+    margin-top: 10px;
+}
+
+
+.center-icon {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 10px;
+}
+

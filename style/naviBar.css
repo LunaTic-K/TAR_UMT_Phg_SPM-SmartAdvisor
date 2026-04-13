@@ -1,0 +1,37 @@
+
+
+[data-testid="stStatusWidget"] {
+    display: none !important;
+}
+/*hide 3 dots*/
+#MainMenu {
+    visibility: hidden !important;
+}
+header[data-testid="stHeader"] {
+    background-color: #617be3!important;
+    height: 3.8rem;
+}
+
+header[data-testid="stHeader"] * {
+    color: white !important;
+    font-weight: 500;
+    font-size: 20px;
+}
+
+.block-container {
+    padding-top: 2rem;
+}
+
+[data-testid="stSidebar"] {
+    background-color: #617be3 !important;
+}
+
+[data-testid="stSidebar"] * {
+    color: white !important;
+    font-size: 20px;
+}
+
+[data-testid="stSidebarNavSeparator"] {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
