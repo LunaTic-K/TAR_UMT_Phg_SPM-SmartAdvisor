@@ -1,11 +1,12 @@
 import streamlit as st
 
+sst.set_page_config(page_title="TAR UMT Pahang SPM Advisor", layout="wide")
 def local_css(file_name):
-    with open(file_name) as f:
+    try
+        with open(file_name) as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-
-local_css("style/naviBar.css")
-local_css("style/footer.css")
+    except FileNotFoundError:
+        pass
 
 #Check if user has data and is eligible
 user_is_eligible = st.session_state.get('user_data', {}).get('eligible', False)
@@ -25,14 +26,16 @@ else:
         st.Page("pages/Course_Finder.py", title="Course Finder"),
         st.Page("pages/feedback.py", title="Feedback")
     ]
-
-pg = st.navigation(pages, position="top")
-
-# 3.Run the navi
-pg.run()
 if user_is_eligible and st.session_state.get('has_redirected') is not True:
     st.session_state['has_redirected'] = True
     st.switch_page("pages/recommendations.py")
+    
+pg = st.navigation(pages, position="top")
+local_css("style/naviBar.css")
+local_css("style/footer.css")
+# 3.Run the navi
+pg.run()
+
 footer_html = """
 <div class="footer">
     <p>© 2026 Developed by DHY</p>
