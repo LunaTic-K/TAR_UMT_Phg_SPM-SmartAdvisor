@@ -1,6 +1,6 @@
 import streamlit as st
 
-sst.set_page_config(page_title="TAR UMT Pahang SPM Advisor", layout="wide")
+st.set_page_config(page_title="TAR UMT Pahang SPM Advisor", layout="wide")
 def local_css(file_name):
     try:
         with open(file_name) as f:
