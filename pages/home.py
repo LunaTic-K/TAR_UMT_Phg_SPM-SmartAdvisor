@@ -9,7 +9,6 @@ def local_css(file_name):
 
 st.markdown('<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">', unsafe_allow_html=True)
 
-local_css("style/naviBar.css")
 local_css("style/home.css") 
 
 #HERO HEADER
