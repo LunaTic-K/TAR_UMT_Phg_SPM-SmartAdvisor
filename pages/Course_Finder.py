@@ -253,7 +253,7 @@ def show_results_popup(is_pass_bm_sj, total_credits):
             st.rerun()
 
 
-if st.button("Process My Path", use_container_width=True):
+if st.button("Process My Path", use_container_width=True,type="primary"):
     # check if name is empty
     if not user_name.strip():
         show_name_error() # Triggers the centered popup
