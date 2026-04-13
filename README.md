@@ -3,7 +3,7 @@
 An automated university diploma course recommender system designed for SPM graduates.
 
 ## Live Demo
-[link to the app}
+https://tarumtphgspm-smartadvisor.streamlit.app
 
 ## Features
 - **OCR Integration:** Automatically extracts grades from SPM result slips using EasyOCR.
