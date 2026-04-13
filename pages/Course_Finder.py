@@ -8,6 +8,7 @@ import re
 import time
 from data.courses import PAHANG_COURSES
 from datetime import datetime
+
 @st.cache_resource
 def get_ocr_reader():
     return easyocr.Reader(['en', 'ms'])
@@ -16,7 +17,7 @@ def get_ocr_reader():
 def show_name_error():
     st.warning(":material/person_off: **Full Name Required**")
     st.write("Please enter your name to proceed with the course finder analysis.")
-    if st.button("OK", use_container_width=True):
+    if st.button("OK", use_container_width=True,type="primary"):
         st.rerun()
 
 def extract_spm_grades(image):
@@ -133,8 +134,10 @@ def get_grade_point(grade):
 
 
 st.divider()
+
 st.subheader(":material/photo_camera: Optional: Auto-fill via Result Slip")
 uploaded_file = st.file_uploader("Upload your SPM result image", type=['jpg', 'jpeg', 'png'])
+
 spm_grades = ["A+", "A", "A-", "B+", "B", "C+", "C", "D", "E", "G"]
 
 
@@ -246,7 +249,7 @@ def show_results_popup(is_pass_bm_sj, total_credits):
         st.warning(f":material/warning: Low Credit Count: You have {total_credits} credits.")
     else:
         st.success(":material/check_circle: Eligible! Go to Recommendations.")
-        if st.button(":material/analytics: View Recommendations", use_container_width=True):
+        if st.button(":material/analytics: View Recommendations", use_container_width=True,type="primary"):
             if 'user_data' in st.session_state:
                 st.session_state['user_data']['eligible'] = True
             st.session_state['go_to_rec'] = True
