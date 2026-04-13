@@ -326,5 +326,10 @@ if st.button("Process My Path", use_container_width=True):
 
 
 if st.session_state.get('go_to_rec'):
-    st.session_state['go_to_rec'] = False
-    st.switch_page("pages/recommendations.py")
+    try
+        st.session_state['go_to_rec'] = False
+        time.sleep(0.1) 
+        st.switch_page("pages/recommendations.py")
+    except Exception as e:
+        # If it fails, force rerun
+        st.rerun()
