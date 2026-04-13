@@ -252,9 +252,13 @@ def show_results_popup(is_pass_bm_sj, total_credits):
         if st.button(":material/analytics: View Recommendations", use_container_width=True):
             if 'user_data' in st.session_state:
                 st.session_state['user_data']['eligible'] = True
-            st.session_state['go_to_rec'] = True
-            st.rerun()
-
+               try:
+                   st.switch_page("pages/recommendations.py")
+               except:
+                   st.session_state['go_to_rec'] = True
+                   st.rerun()
+            else:
+                st.error("Data missing!")
 
 if st.button("Process My Path", use_container_width=True):
     # check if name is empty
@@ -331,5 +335,4 @@ if st.session_state.get('go_to_rec'):
         time.sleep(0.1) 
         st.switch_page("pages/recommendations.py")
     except Exception as e:
-        # If it fails, force rerun
-        st.rerun()
+        st.error("Could not find the recommendations page. Please check your folder name.")
