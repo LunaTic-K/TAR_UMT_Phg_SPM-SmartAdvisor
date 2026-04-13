@@ -326,7 +326,7 @@ if st.button("Process My Path", use_container_width=True):
 
 
 if st.session_state.get('go_to_rec'):
-    try
+    try:
         st.session_state['go_to_rec'] = False
         time.sleep(0.1) 
         st.switch_page("pages/recommendations.py")
