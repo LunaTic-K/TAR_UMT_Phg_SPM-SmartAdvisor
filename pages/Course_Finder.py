@@ -9,15 +9,17 @@ import time
 from data.courses import PAHANG_COURSES
 from datetime import datetime
 
+# --- OCR ---
 @st.cache_resource
 def get_ocr_reader():
+    # 'en' for English, 'ms' for Malay (Bahasa Melayu)
     return easyocr.Reader(['en', 'ms'])
 
 @st.dialog("Missing Information")
 def show_name_error():
     st.warning(":material/person_off: **Full Name Required**")
-    st.write("Please enter your name to proceed with the course finder analysis.")
-    if st.button("OK", use_container_width=True,type="primary"):
+    st.write("Please enter your name to proceed with the academic path analysis.")
+    if st.button("OK", use_container_width=True):
         st.rerun()
 
 def extract_spm_grades(image):
@@ -25,7 +27,7 @@ def extract_spm_grades(image):
         reader = get_ocr_reader()
         img_array = np.array(image.convert('L'))
         results = reader.readtext(img_array, paragraph=False)
-
+        
         full_text = " ".join([res[1].upper() for res in results]).replace("€", "C")
         all_text_found = [res[1].upper().replace("€", "C") for res in results]
 
@@ -66,29 +68,73 @@ def extract_spm_grades(image):
             
             if found_grade:
                 found_grades[key] = found_grade
+                
 
-        all_possible_grades = []
-        for text in all_text_found:
-            grade_match = re.search(r'\b(A\+|A-|A|B\+|B|C\+|C|D|E|G|€)\b', text)
-            if grade_match and grade_match.group(1):
-                clean_grade = grade_match.group(1).replace("€", "C")
-                all_possible_grades.append(clean_grade)
+# --- Elective Extraction ---
+        all_possible_data = []
+        grade_pattern = r'\b(A\+|A-|A|B\+|B|C\+|C|D|E|G|€)\b'
+        
+        # Expanded keywords to ignore (Common Malay/English grade descriptors)
+        blacklist = [
+            "CEMERLANG", "TINGGI", "KEPUJIAN", "LULUS", "GAGAL", 
+            "HADIR", "TERBILANG", "TER", "MENCAPAI", "PERINGKAT"
+        ]
+        core_keywords = ["MELAYU", "MATEMATIK", "MATHEMATICS", "INGGERIS", "ENGLISH", "SEJARAH", "HISTORY"]
 
-        used_core_grades = list(found_grades.values())
-        electives = []
-        for g in all_possible_grades:
-            if g in used_core_grades:
-                used_core_grades.remove(g)
-            else:
-                electives.append(g)
+        for res in results:
+            text = res[1].upper().replace("€", "C")
+            bbox = res[0]
+            grade_match = re.search(grade_pattern, text)
+            
+            if grade_match:
+                grade = grade_match.group(1).replace("€", "C")
+                is_core = any(k in text for k in core_keywords)
+                
+                if not is_core:
+                    # Clean the current text block
+                    potential_subject = text.replace(grade, "").strip()
+                    for word in blacklist:
+                        potential_subject = potential_subject.replace(word, "")
+                    
+                    if len(potential_subject.strip()) < 3:
+                        grade_y_center = (bbox[0][1] + bbox[2][1]) / 2
+                        
+                        best_neighbor = ""
+                        min_x = bbox[0][0] 
 
+                        for other_res in results:
+                            other_text = other_res[1].upper()
+                            other_bbox = other_res[0]
+                            other_y_center = (other_bbox[0][1] + other_bbox[2][1]) / 2
+                            
+                            if abs(grade_y_center - other_y_center) < 20: 
+                              
+                                if other_bbox[0][0] < min_x:
+                                   
+                                    if not any(k in other_text for k in core_keywords) and \
+                                       not any(b in other_text for b in blacklist) and \
+                                       len(other_text.strip()) > 2:
+                                        best_neighbor = other_text
+                                        min_x = other_bbox[0][0] # Update min_x to find the leftmost word
+                        
+                        potential_subject = best_neighbor
+                    
+                    # Final cleanup of common symbols
+                    clean_name = re.sub(r'[()\-:.]', '', potential_subject).strip()
+
+                    if len(clean_name) > 2:
+                        all_possible_data.append({"name": clean_name, "grade": grade})
+
+        # --- Sort and assign to e1 and e2 ---
         grade_order = ["A+", "A", "A-", "B+", "B", "C+", "C", "D", "E", "G"]
-        electives.sort(key=lambda x: grade_order.index(x) if x in grade_order else 999)
+        all_possible_data.sort(key=lambda x: grade_order.index(x['grade']) if x['grade'] in grade_order else 999)
 
-        if len(electives) >= 1: 
-            found_grades['e1'] = electives[0]
-        if len(electives) >= 2: 
-            found_grades['e2'] = electives[1]
+        if len(all_possible_data) >= 1: 
+            found_grades['e1'] = all_possible_data[0]['grade']
+            found_grades['e1_name'] = all_possible_data[0]['name']
+        if len(all_possible_data) >= 2: 
+            found_grades['e2'] = all_possible_data[1]['grade']
+            found_grades['e2_name'] = all_possible_data[1]['name']
             
         return found_grades if found_grades else None
         
@@ -97,7 +143,7 @@ def extract_spm_grades(image):
         return None
 
 
-#int session state
+# --- initialize session state ---
 if 'inputs' not in st.session_state:
     st.session_state['inputs'] = {
         "user_name": "",
@@ -109,7 +155,9 @@ if 'inputs' not in st.session_state:
         "eng_idx": 6,
         "hist_idx": 6,
         "e1_idx": 6,
-        "e2_idx": 6
+        "e2_idx": 6,
+        "e1_name": "Elective 1", 
+        "e2_name": "Elective 2"
     }
 if 'go_to_rec' not in st.session_state:
     st.session_state['go_to_rec'] = False
@@ -176,15 +224,21 @@ if uploaded_file:
                 time.sleep(0.5)
 
             if extracted:
-                progress_placeholder.success(":material/task_alt: **Success!** We have identified your grades and updated the form below.")
-                
-                for sub, grade in extracted.items():
-                    if grade in spm_grades:
-                        st.session_state['inputs'][f"{sub}_idx"] = spm_grades.index(grade)
+                    progress_placeholder.success(":material/task_alt: **Success!** We have identified your grades and subjects.")
+                    
+                    for sub, val in extracted.items():
+                        # 1. Update the grade selection for all subjects
+                        if sub in ['bm', 'math', 'eng', 'hist', 'e1', 'e2']:
+                            if val in spm_grades:
+                                st.session_state['inputs'][f"{sub}_idx"] = spm_grades.index(val)
+                        
+                        # 2.Save the elective names into session state
+                        if sub in ['e1_name', 'e2_name']:
+                            st.session_state['inputs'][sub] = val
 
-                time.sleep(2.5)
-                progress_placeholder.empty()
-                st.rerun()
+                    time.sleep(2.5)
+                    progress_placeholder.empty()
+                    st.rerun()
 
 
 user_name = st.text_input(
@@ -229,8 +283,12 @@ with c2:
         st.error(":material/cancel: Must Pass Sejarah!")
 
 st.subheader("2. Best Electives")
-e1 = st.selectbox("Elective 1", spm_grades, index=st.session_state['inputs']['e1_idx'])
-e2 = st.selectbox("Elective 2", spm_grades, index=st.session_state['inputs']['e2_idx'])
+
+e1_label = st.session_state['inputs'].get('e1_name', "Elective 1")
+e2_label = st.session_state['inputs'].get('e2_name', "Elective 2")
+
+e1 = st.selectbox(f"Best Elective ({e1_label})", spm_grades, index=st.session_state['inputs']['e1_idx'])
+e2 = st.selectbox(f"Second Best Elective ({e2_label})", spm_grades, index=st.session_state['inputs']['e2_idx'])
 
 all_subjects = [bm, math, eng, hist, e1, e2]
 total_credits = sum(1 for g in all_subjects if get_grade_point(g) >= 2)
@@ -249,19 +307,19 @@ def show_results_popup(is_pass_bm_sj, total_credits):
         st.warning(f":material/warning: Low Credit Count: You have {total_credits} credits.")
     else:
         st.success(":material/check_circle: Eligible! Go to Recommendations.")
-        if st.button(":material/analytics: View Recommendations", use_container_width=True,type="primary"):
+        if st.button(":material/analytics: View Recommendations", use_container_width=True):
             if 'user_data' in st.session_state:
                 st.session_state['user_data']['eligible'] = True
             st.session_state['go_to_rec'] = True
             st.rerun()
 
 
-if st.button("Process My Path", use_container_width=True,type="primary"):
-    # check if name is empty
+if st.button("Process My Path", use_container_width=True):
+    # 1. Check if name is empty
     if not user_name.strip():
         show_name_error() # Triggers the centered popup
     else:
-        # 2.if name exists, proceed
+        # 2. If name exists, proceed with the rest of your logic
         faculty_map = {
             "Information Technology": "FOCS_DEPT",
             "Business & Accounting": "AFB_DEPT",
@@ -269,7 +327,8 @@ if st.button("Process My Path", use_container_width=True,type="primary"):
             "Others": "Others"
         }
         selected_faculty_key = faculty_map.get(interest_category, "Others")
-        #save inputs to session state
+
+        # Save inputs to session state
         st.session_state['inputs'].update({
             "user_name": user_name,
             "interest_text": interest_text,
@@ -294,7 +353,7 @@ if st.button("Process My Path", use_container_width=True,type="primary"):
         }
         st.session_state['user_data'] = user_data
 
-        #course matching logic
+        # Course matching logic
         top_course = "No Eligible Courses"
         faculty_courses = PAHANG_COURSES.get(selected_faculty_key, {}).get("DIPLOMA", [])
         for course in faculty_courses:
@@ -306,7 +365,7 @@ if st.button("Process My Path", use_container_width=True,type="primary"):
                 top_course = course['name']
                 break
 
-        #store and show the success/results popup
+        # Log and show the success/results popup
         try:
             log_file = "consultation_logs.csv"
             new_record = {
@@ -319,6 +378,7 @@ if st.button("Process My Path", use_container_width=True,type="primary"):
             }
             pd.DataFrame([new_record]).to_csv(log_file, mode='a', index=False, header=not os.path.exists(log_file))
             
+            # This is your existing centered results popup
             show_results_popup(is_pass_bm_sj, total_credits)
             
         except PermissionError:
