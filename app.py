@@ -4,7 +4,7 @@ sst.set_page_config(page_title="TAR UMT Pahang SPM Advisor", layout="wide")
 def local_css(file_name):
     try:
         with open(file_name) as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+           st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     except FileNotFoundError:
         pass
 
