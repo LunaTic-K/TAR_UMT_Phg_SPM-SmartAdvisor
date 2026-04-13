@@ -149,8 +149,9 @@ if uploaded_file:
     
     if uploaded_file:
         file_id = f"{uploaded_file.name}_{uploaded_file.size}"
-
+        
         if st.session_state.get('last_file_id') != file_id:
+            st.session_state['scanning_active'] = True
             st.session_state['last_file_id'] = file_id
             progress_placeholder = st.empty()
 
@@ -184,53 +185,54 @@ if uploaded_file:
 
                 time.sleep(2.5)
                 progress_placeholder.empty()
+                st.session_state['scanning_active'] = False
                 st.rerun()
 
-
+is_scanning = st.session_state.get('scanning_active', False)
 user_name = st.text_input(
     "Full Name",
     value=st.session_state['inputs']['user_name'],
-    placeholder="Enter your name (e.g., Dini)"
+    placeholder="Enter your name (e.g., Dini)",disabled=is_scanning)
 )
 
 interest_categories = ["Information Technology", "Business & Accounting", "Education & Social Science", "Others"]
 interest_category = st.selectbox(
     "Select your main area of interest",
     options=interest_categories,
-    index=interest_categories.index(st.session_state['inputs']['interest_category'])
+    index=interest_categories.index(st.session_state['inputs']['interest_category'],,disabled=is_scanning)
 )
 
 interest_text = st.text_area(
     "Tell us more about your interests (optional)",
     value=st.session_state['inputs']['interest_text'],
-    placeholder="Example: I want to learn about cybersecurity..."
+    placeholder="Example: I want to learn about cybersecurity...",,disabled=is_scanning
 )
 
 exam_years = list(range(2026, 2016, -1))
 exam_year = st.selectbox(
     "Select your SPM Year",
     options=exam_years,
-    index=st.session_state['inputs']['year_idx']
+    index=st.session_state['inputs']['year_idx'],disabled=is_scanning
 )
 
 c1, c2 = st.columns(2)
 with c1:
-    bm = st.selectbox("Bahasa Melayu", spm_grades, index=st.session_state['inputs']['bm_idx'])
+    bm = st.selectbox("Bahasa Melayu", spm_grades, index=st.session_state['inputs']['bm_idx'],disabled=is_scanning)
     if get_grade_point(bm) == 0:
         st.error(":material/cancel: Must Pass BM!")
 
-    math = st.selectbox("Mathematics", spm_grades, index=st.session_state['inputs']['math_idx'])
+    math = st.selectbox("Mathematics", spm_grades, index=st.session_state['inputs']['math_idx'],disabled=is_scanning)
 
 with c2:
-    eng = st.selectbox("English", spm_grades, index=st.session_state['inputs']['eng_idx'])
+    eng = st.selectbox("English", spm_grades, index=st.session_state['inputs']['eng_idx'],disabled=is_scanning)
 
-    hist = st.selectbox("Sejarah", spm_grades, index=st.session_state['inputs']['hist_idx'])
+    hist = st.selectbox("Sejarah", spm_grades, index=st.session_state['inputs']['hist_idx'],disabled=is_scanning)
     if get_grade_point(hist) == 0:
         st.error(":material/cancel: Must Pass Sejarah!")
 
 st.subheader("2. Best Electives")
-e1 = st.selectbox("Elective 1", spm_grades, index=st.session_state['inputs']['e1_idx'])
-e2 = st.selectbox("Elective 2", spm_grades, index=st.session_state['inputs']['e2_idx'])
+e1 = st.selectbox("Elective 1", spm_grades, index=st.session_state['inputs']['e1_idx'],disabled=is_scanning)
+e2 = st.selectbox("Elective 2", spm_grades, index=st.session_state['inputs']['e2_idx'],disabled=is_scanning)
 
 all_subjects = [bm, math, eng, hist, e1, e2]
 total_credits = sum(1 for g in all_subjects if get_grade_point(g) >= 2)
@@ -256,7 +258,7 @@ def show_results_popup(is_pass_bm_sj, total_credits):
             st.rerun()
 
 
-if st.button("Process My Path", use_container_width=True):
+if st.button("Process My Path", use_container_width=True,disabled=is_scanning):
     # check if name is empty
     if not user_name.strip():
         show_name_error() # Triggers the centered popup
