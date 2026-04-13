@@ -8,7 +8,6 @@ import re
 import time
 from data.courses import PAHANG_COURSES
 from datetime import datetime
-
 @st.cache_resource
 def get_ocr_reader():
     return easyocr.Reader(['en', 'ms'])
@@ -134,10 +133,11 @@ def get_grade_point(grade):
 
 
 st.divider()
-
 st.subheader(":material/photo_camera: Optional: Auto-fill via Result Slip")
-uploaded_file = st.file_uploader("Upload your SPM result image", type=['jpg', 'jpeg', 'png'])
-
+uploaded_file = st.file_uploader(
+    ":material/image: Upload your SPM result image (Limited to 3MB)", 
+    type=['jpg', 'jpeg', 'png']
+)
 spm_grades = ["A+", "A", "A-", "B+", "B", "C+", "C", "D", "E", "G"]
 
 
