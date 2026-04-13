@@ -1,280 +1,330 @@
 import streamlit as st
-from data.courses import PAHANG_COURSES, FACULTY_NAMES
-from fuzzywuzzy import process
-import re
-import os
 import pandas as pd
+import os
+import easyocr
+import numpy as np
+from PIL import Image
+import re
+import time
+from data.courses import PAHANG_COURSES
 from datetime import datetime
 
-if "user_data" not in st.session_state:
-    st.warning("No data found. Please go back and complete the form.")
-    st.stop()
+@st.cache_resource
+def get_ocr_reader():
+    return easyocr.Reader(['en', 'ms'])
 
-def show():
+@st.dialog("Missing Information")
+def show_name_error():
+    st.warning(":material/person_off: **Full Name Required**")
+    st.write("Please enter your name to proceed with the course finder analysis.")
+    if st.button("OK", use_container_width=True):
+        st.rerun()
 
-    # --- 辅助函数：扁平化课程列表 ---
-    def flatten_courses(courses_dict):
-        """将嵌套的课程字典转换为扁平列表"""
-        all_courses = []
-        for dept_code, dept_data in courses_dict.items():
-            faculty_name = FACULTY_NAMES.get(dept_code, dept_code)
-            for course in dept_data.get("DIPLOMA", []):
-                course_with_faculty = course.copy()
-                course_with_faculty["faculty"] = faculty_name
-                course_with_faculty["dept_code"] = dept_code
-                all_courses.append(course_with_faculty)
-            for course in dept_data.get("DEGREE", []):
-                course_with_faculty = course.copy()
-                course_with_faculty["faculty"] = faculty_name
-                course_with_faculty["dept_code"] = dept_code
-                all_courses.append(course_with_faculty)
-        return all_courses
+def extract_spm_grades(image):
+    try:
+        reader = get_ocr_reader()
+        img_array = np.array(image.convert('L'))
+        results = reader.readtext(img_array, paragraph=False)
 
-    # --- 类别映射 ---
-    def get_course_category(course):
-        """根据课程的 category 字段判断类别 - Updated for consistency"""
-        metadata = course.get('metadata', {})
-        course_category = metadata.get('category', '')
-        if course_category:
-            if "Information Technology" in course_category:
-                return "Information Technology"
-            elif "Accounting, Finance & Business" in course_category:
-                return "Accounting, Finance & Business"
-            elif "Social Science" in course_category:
-                return "Social Science & Humanities"
-        
-        faculty = course.get('faculty', '')
-        if "Computing" in faculty:
-            return "Information Technology"
-        elif "Accountancy" in faculty or "Business" in faculty:
-            return "Accounting, Finance & Business"
-        elif "Social Science" in faculty or "Humanities" in faculty:
-            return "Social Science & Humanities"
-        return "Others"
+        full_text = " ".join([res[1].upper() for res in results]).replace("€", "C")
+        all_text_found = [res[1].upper().replace("€", "C") for res in results]
 
-    # --- FuzzyWuzzy 推荐算法 ---
-    def calculate_course_match(user_interest, course_tags, user_grades, course_requirements, user_category=None, course_category=None):
-        interest_score = 0
-        is_valid_interest = user_interest and user_interest.strip() and user_interest != user_category
-        
-        if is_valid_interest and course_tags:
-            keywords = re.split(r'[,\s]+', user_interest.lower())
-            keywords = [k.strip() for k in keywords if k.strip() and len(k.strip()) > 1]
-            if not keywords:
-                keywords = [user_interest.lower()]
-            weighted_scores = []
-            for keyword in keywords:
-                matches = process.extract(keyword, course_tags, limit=1)
-                if matches:
-                    score = matches[0][1]
-                    if score < 40:
-                        score = score * 0.3
-                    weighted_scores.append(score)
-            if weighted_scores:
-                interest_score = sum(weighted_scores) / len(weighted_scores)
-            else:
-                interest_score = 0
-            interest_score = min(interest_score, 100)
-        elif user_category and course_category:
-            if user_category == course_category:
-                interest_score = 70
-            else:
-                interest_score = 30
-        else:
-            interest_score = 50
-        
-        if interest_score < 30:
-            return round(interest_score * 0.3, 1)
-        
-        academic_rank = (user_grades.get('total_credits', 0) / 6) * 100
-        academic_rank = min(academic_rank, 100)
-        grade_score = 0
-        grade_weight = 0
-        
-        specific_reqs = course_requirements.get('specific', {})
-        math_req = specific_reqs.get('Mathematics', None)
-        if math_req is not None:
-            grade_weight += 1
-            if user_grades.get('math', 0) >= math_req:
-                grade_score += 1
-        
-        eng_req = specific_reqs.get('English Language', 2)
-        if eng_req is not None:
-            grade_weight += 1
-            if user_grades.get('eng', 0) >= eng_req:
-                grade_score += 1
-
-        eligibility_status = 100 if (grade_weight == 0 or grade_score == grade_weight) else 0
-        total_score = (academic_rank * 0.5) + (interest_score * 0.3) + (eligibility_status * 0.2)
-        return round(total_score, 1)
-
-    def get_course_recommendations(user_interest, user_category, user_grades, courses_data, top_n=5):
-        all_courses = flatten_courses(courses_data)
-        recommendations = []
-        category_map = {
-            "Information Technology": "Information Technology",
-            "Business & Accounting": "Accounting, Finance & Business",
-            "Education & Social Science": "Social Science & Humanities"
+        found_grades = {}
+        core_patterns = {
+            'bm': r'BAHASA MELAYU|BM',
+            'math': r'MATEMATIK|MATHEMATICS|MATH|MATHS',
+            'eng': r'BAHASA INGGERIS|ENGLISH|BI',
+            'hist': r'SEJARAH|HISTORY'
         }
-        target_category = category_map.get(user_category, user_category)
-        has_interest_text = user_interest and user_interest.strip() and user_interest != user_category
-        
-        for course in all_courses:
-            course_category = get_course_category(course)
-            if user_category != "Others" and course_category != target_category:
-                continue
+
+        for key, patterns in core_patterns.items():
+            found_grade = None
+            pattern_list = patterns.split('|')
             
-            metadata = course.get('metadata', {})
-            course_tags = metadata.get('tags', [])
-            course_requirements = course.get('requirements', {})
+            for pattern in pattern_list:
+                match = re.search(rf"{pattern}[\s\W]*?([A-G][+-]?)", full_text, re.IGNORECASE)
+                if match and match.group(1):
+                    found_grade = match.group(1).upper()
+                    break
+                
+                match = re.search(rf'([A-G][+-]?)[\s\W]*?{pattern}', full_text, re.IGNORECASE)
+                if match and match.group(1):
+                    found_grade = match.group(1).upper()
+                    break
             
-            if 'study_modes' in course:
-                fee = course['study_modes']['Full-Time']['fees']
-                duration = course['study_modes']['Full-Time']['duration']
+            if not found_grade:
+                for pattern in pattern_list:
+                    subject_pos = full_text.find(pattern)
+                    if subject_pos != -1:
+                        start = max(0, subject_pos - 50)
+                        end = min(len(full_text), subject_pos + 100)
+                        surrounding = full_text[start:end]
+                        grade_match = re.search(r'([A-G][+-]?)', surrounding)
+                        if grade_match and grade_match.group(1):
+                            found_grade = grade_match.group(1).upper()
+                            break
+            
+            if found_grade:
+                found_grades[key] = found_grade
+
+        all_possible_grades = []
+        for text in all_text_found:
+            grade_match = re.search(r'\b(A\+|A-|A|B\+|B|C\+|C|D|E|G|€)\b', text)
+            if grade_match and grade_match.group(1):
+                clean_grade = grade_match.group(1).replace("€", "C")
+                all_possible_grades.append(clean_grade)
+
+        used_core_grades = list(found_grades.values())
+        electives = []
+        for g in all_possible_grades:
+            if g in used_core_grades:
+                used_core_grades.remove(g)
             else:
-                fee = course.get('estimated_fees', 0)
-                duration = course.get('duration', '2 Years')
-            
-            career_paths = metadata.get('career_paths', [])
-            career = ", ".join(career_paths) if career_paths else 'Various career opportunities'
-            
-            match_score = calculate_course_match(
-                user_interest if has_interest_text else "", 
-                course_tags,
-                user_grades,
-                course_requirements,
-                user_category,
-                course_category
-            )
-            
-            if match_score > 0:
-                recommendations.append({
-                    'course_name': course.get('name', ''),
-                    'score': round(match_score, 1),
-                    'fee': fee,
-                    'description': metadata.get('description', 'No description available.'),
-                    'link': metadata.get('link', '#'),
-                    'career': career,
-                    'tags': course_tags,
-                    'progression': metadata.get('progression', ''),
-                    'category': course_category,
-                    'faculty': course.get('faculty', ''),
-                    'duration': duration,
-                    'study_modes': course.get('study_modes', None),
-                    'is_preferred': True
-                })
-        recommendations.sort(key=lambda x: x['score'], reverse=True)
-        return recommendations[:top_n]
+                electives.append(g)
 
-    # --- 主页面逻辑 ---
-    user = st.session_state.get('user_data', {})
-    if not user or not user.get('eligible', False):
-        st.warning(":material/warning: Please complete the Course Finder first!")
-        if st.button(":material/arrow_back: Go to Course Finder", use_container_width=True):
-            st.session_state['current_page'] = 'course_finder'
-            st.rerun()
-        st.stop()
+        grade_order = ["A+", "A", "A-", "B+", "B", "C+", "C", "D", "E", "G"]
+        electives.sort(key=lambda x: grade_order.index(x) if x in grade_order else 999)
+
+        if len(electives) >= 1: 
+            found_grades['e1'] = electives[0]
+        if len(electives) >= 2: 
+            found_grades['e2'] = electives[1]
+            
+        return found_grades if found_grades else None
         
-    st.markdown("""
-    <style>
-        .main-header {
-            font-size: 32px;
-            font-weight: 700;
-            color: #1f3a93;
-            margin-bottom: 1px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-    </style>
-    """, unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f":material/error: Scan failed: {e}")
+        return None
 
-    st.markdown(f'<div class="main-header">Recommended Courses for {user["name"]}</div>', unsafe_allow_html=True)
-    st.caption(f"Personalized results matching **{user['interest']}** in the **{user.get('interest_category')}** faculty.")
-    st.divider()
 
-    user_grades = {
-        'math': user.get('math_val', 0),
-        'eng': user.get('eng_val', 0),
-        'bm': user.get('bm_val', 0),
-        'total_credits': user.get('total_credits', 0)
+#int session state
+if 'inputs' not in st.session_state:
+    st.session_state['inputs'] = {
+        "user_name": "",
+        "interest_text": "",
+        "interest_category": "Information Technology",
+        "year_idx": 1,
+        "bm_idx": 6,
+        "math_idx": 6,
+        "eng_idx": 6,
+        "hist_idx": 6,
+        "e1_idx": 6,
+        "e2_idx": 6
     }
+if 'go_to_rec' not in st.session_state:
+    st.session_state['go_to_rec'] = False
 
-    is_eligible = user.get('eligible', False)
 
-    if not is_eligible:
-        st.error(":material/error: **You do not meet the minimum requirements** (BM and Sejarah must be at least a pass AND at least 3 credits) for Diploma programs at TAR UMT Pahang.")
-        if st.button(":material/arrow_back: Back to Course Finder", key="btn_ineligible_back", use_container_width=True):
-            st.session_state['current_page'] = 'course_finder'
-            st.rerun()
+st.markdown("""
+    <style>
+    .stSelectbox label { font-weight: 600; color: #1f3a93; }
+    .main-header { font-size: 32px; font-weight: 700; color: #1f3a93; margin-bottom: 5px; }
+    .sub-text { color: #666; margin-bottom: 20px; }
+    [data-testid="stMetricValue"] { color: #1f3a93; font-size: 24px; }
+    </style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="main-header">TAR UMT Pahang SPM SmartAdvisor</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-text">Academic Path Recommendation System for TAR UMT Pahang</div>', unsafe_allow_html=True)
+
+
+def get_grade_point(grade):
+    grade_map = {"A+": 4, "A": 4, "A-": 4, "B+": 3, "B": 3, "C+": 2, "C": 2, "D": 1, "E": 1, "G": 0}
+    return grade_map.get(grade, 0)
+
+
+st.divider()
+
+st.subheader(":material/photo_camera: Optional: Auto-fill via Result Slip")
+uploaded_file = st.file_uploader("Upload your SPM result image", type=['jpg', 'jpeg', 'png'])
+
+spm_grades = ["A+", "A", "A-", "B+", "B", "C+", "C", "D", "E", "G"]
+
+
+if uploaded_file:
+    MAX_SIZE_MB = 3
+    if uploaded_file.size > MAX_SIZE_MB * 1024 * 1024:
+        st.error(":material/file_upload_off: File too large! Maximum size is 3MB. Your file is {:.1f}MB.".format(uploaded_file.size / 1024 / 1024))
+        uploaded_file = None
+    
+    if uploaded_file:
+        file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+
+        if st.session_state.get('last_file_id') != file_id:
+            st.session_state['last_file_id'] = file_id
+            progress_placeholder = st.empty()
+
+            with progress_placeholder.container():
+                st.markdown(":material/search_activity: *Just a moment, please. We are carefully scanning your file...*")
+                bar = st.progress(0)
+                status_text = st.status(":material/sync: Initializing EasyOCR Engine...")
+
+                for i in range(1, 40):
+                    bar.progress(i)
+                    time.sleep(0.05)
+
+                status_text.update(label=":material/database_search: Analyzing Text Patterns...", state="running")
+
+                img = Image.open(uploaded_file)
+                extracted = extract_spm_grades(img)
+
+                for i in range(40, 101):
+                    bar.progress(i)
+                    time.sleep(0.02)
+
+                status_text.update(label=":material/check_circle: Scan Complete! Updating your form...", state="complete")
+                time.sleep(0.5)
+
+            if extracted:
+                progress_placeholder.success(":material/task_alt: **Success!** We have identified your grades and updated the form below.")
+                
+                for sub, grade in extracted.items():
+                    if grade in spm_grades:
+                        st.session_state['inputs'][f"{sub}_idx"] = spm_grades.index(grade)
+
+                time.sleep(2.5)
+                progress_placeholder.empty()
+                st.rerun()
+
+
+user_name = st.text_input(
+    "Full Name",
+    value=st.session_state['inputs']['user_name'],
+    placeholder="Enter your name (e.g., Dini)"
+)
+
+interest_categories = ["Information Technology", "Business & Accounting", "Education & Social Science", "Others"]
+interest_category = st.selectbox(
+    "Select your main area of interest",
+    options=interest_categories,
+    index=interest_categories.index(st.session_state['inputs']['interest_category'])
+)
+
+interest_text = st.text_area(
+    "Tell us more about your interests (optional)",
+    value=st.session_state['inputs']['interest_text'],
+    placeholder="Example: I want to learn about cybersecurity..."
+)
+
+exam_years = list(range(2026, 2016, -1))
+exam_year = st.selectbox(
+    "Select your SPM Year",
+    options=exam_years,
+    index=st.session_state['inputs']['year_idx']
+)
+
+c1, c2 = st.columns(2)
+with c1:
+    bm = st.selectbox("Bahasa Melayu", spm_grades, index=st.session_state['inputs']['bm_idx'])
+    if get_grade_point(bm) == 0:
+        st.error(":material/cancel: Must Pass BM!")
+
+    math = st.selectbox("Mathematics", spm_grades, index=st.session_state['inputs']['math_idx'])
+
+with c2:
+    eng = st.selectbox("English", spm_grades, index=st.session_state['inputs']['eng_idx'])
+
+    hist = st.selectbox("Sejarah", spm_grades, index=st.session_state['inputs']['hist_idx'])
+    if get_grade_point(hist) == 0:
+        st.error(":material/cancel: Must Pass Sejarah!")
+
+st.subheader("2. Best Electives")
+e1 = st.selectbox("Elective 1", spm_grades, index=st.session_state['inputs']['e1_idx'])
+e2 = st.selectbox("Elective 2", spm_grades, index=st.session_state['inputs']['e2_idx'])
+
+all_subjects = [bm, math, eng, hist, e1, e2]
+total_credits = sum(1 for g in all_subjects if get_grade_point(g) >= 2)
+is_pass_bm_sj = get_grade_point(bm) >= 1 and get_grade_point(hist) >= 1
+
+st.divider()
+st.metric(label="Total Credits Found", value=f"{total_credits} Credits")
+
+
+@st.dialog("Processing Results")
+def show_results_popup(is_pass_bm_sj, total_credits):
+    st.write("### Analysis Complete")
+    if not is_pass_bm_sj:
+        st.error(":material/block: Requirement Not Met: Must Pass BM & Sejarah.")
+    elif total_credits < 3:
+        st.warning(f":material/warning: Low Credit Count: You have {total_credits} credits.")
     else:
-        results = get_course_recommendations(user['interest'], user.get('interest_category', 'Others'), user_grades, PAHANG_COURSES, top_n=3)
-        
-        if not results:
-            st.warning(f":material/search: No courses found in **{user.get('interest_category', 'Others')}** category.")
-        else:
-            st.subheader(f":material/recommend: Top 3 Courses Recommendations in {user.get('interest_category', 'Others')}")
+        st.success(":material/check_circle: Eligible! Go to Recommendations.")
+        if st.button(":material/analytics: View Recommendations", use_container_width=True):
+            if 'user_data' in st.session_state:
+                st.session_state['user_data']['eligible'] = True
+            st.session_state['go_to_rec'] = True
+            st.rerun()
+
+
+if st.button("Process My Path", use_container_width=True):
+    # check if name is empty
+    if not user_name.strip():
+        show_name_error() # Triggers the centered popup
+    else:
+        # 2.if name exists, proceed
+        faculty_map = {
+            "Information Technology": "FOCS_DEPT",
+            "Business & Accounting": "AFB_DEPT",
+            "Education & Social Science": "FSSH_DEPT",
+            "Others": "Others"
+        }
+        selected_faculty_key = faculty_map.get(interest_category, "Others")
+        #save inputs to session state
+        st.session_state['inputs'].update({
+            "user_name": user_name,
+            "interest_text": interest_text,
+            "interest_category": interest_category,
+            "year_idx": exam_years.index(exam_year),
+            "bm_idx": spm_grades.index(bm),
+            "math_idx": spm_grades.index(math),
+            "eng_idx": spm_grades.index(eng),
+            "hist_idx": spm_grades.index(hist),
+            "e1_idx": spm_grades.index(e1),
+            "e2_idx": spm_grades.index(e2)
+        })
+
+        user_data = {
+            "name": user_name,
+            "interest": interest_text if interest_text else interest_category,
+            "interest_category": interest_category,
+            "math_val": get_grade_point(math),
+            "eng_val": get_grade_point(eng),
+            "total_credits": total_credits,
+            "eligible": is_pass_bm_sj and total_credits >= 3
+        }
+        st.session_state['user_data'] = user_data
+
+        #course matching logic
+        top_course = "No Eligible Courses"
+        faculty_courses = PAHANG_COURSES.get(selected_faculty_key, {}).get("DIPLOMA", [])
+        for course in faculty_courses:
+            req = course.get('requirements', {})
+            spec = req.get('specific', {})
+            if (total_credits >= req.get('min_credits', 3) and
+                user_data['math_val'] >= spec.get('Mathematics', 0) and
+                user_data['eng_val'] >= spec.get('English Language', 0)):
+                top_course = course['name']
+                break
+
+        #store and show the success/results popup
+        try:
+            log_file = "consultation_logs.csv"
+            new_record = {
+                "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "Student_Name": user_name,
+                "Interest_Category": interest_category,
+                "Credits": total_credits,
+                "Eligible": "Yes" if user_data['eligible'] else "No",
+                "Top_Match": top_course
+            }
+            pd.DataFrame([new_record]).to_csv(log_file, mode='a', index=False, header=not os.path.exists(log_file))
             
-            for item in results:
-                with st.container(border=True):
-                    col1, col2 = st.columns([3, 1])
-                    with col1:
-                        st.markdown(f"### {item['course_name']}")
-                        
-                        if item.get('study_modes'):
-                            modes = item['study_modes']
-                            
-                            st.write("**Estimated fee:**")
-                            for mode_name, data in modes.items():
-                                st.write(f"&nbsp;&nbsp;&nbsp;&nbsp;🔹 {mode_name}: RM {data['fees']:,}")
-                            
-                            st.write("**Progression:**")
-                            for mode_name, data in modes.items():
-                                st.write(f"&nbsp;&nbsp;&nbsp;&nbsp;🔹 {mode_name}: {data['duration']}")
-                        else:
-                            fee = item['fee']
-                            if fee and fee > 0:
-                                st.write(f"**Estimated Fee:** RM {fee:,}")
-                            else:
-                                st.write("**Estimated Fee:** Please check official website")
-                            
-                            duration = item.get('duration', '2 Years')
-                            st.write(f"**Progression:** {duration}")
-                        # --- END CUSTOM DISPLAY ---
-                        
-                        st.write(item['description'])
+            show_results_popup(is_pass_bm_sj, total_credits)
+            
+        except PermissionError:
+            st.error(":material/lock: Close 'consultation_logs.csv' first!")
 
-                        button_html = f"""
-                        <a href="{item['link']}" target="_blank" style="
-                            text-decoration: none; 
-                            color: white; 
-                            background-color: #003366;
-                            padding: 8px 16px; 
-                            border-radius: 5px; 
-                            font-weight: bold; 
-                            display: inline-block;
-                            margin-top: 10px;
-                            font-size: 14px;
-                        ">
-                            View Course Details →
-                        </a>
-                        """
-                        st.markdown(button_html, unsafe_allow_html=True)
-                        
-                    with col2:
-                        score = item['score']
-                        if score >= 80:
-                            st.metric("Match Score", f"{score}%", delta="Excellent Match!", delta_color="normal")
-                            st.success(":material/star: Highly Recommended")
-                        elif score >= 60:
-                            st.metric("Match Score", f"{score}%", delta="Good Match", delta_color="normal")
-                            st.info(":material/thumb_up: Good Option")
-                        elif score >= 40:
-                            st.metric("Match Score", f"{score}%", delta="Fair Match", delta_color="inverse")
-                            st.warning(":material/more_horiz: Consider Alternatives")
-                        else:
-                            st.metric("Match Score", f"{score}%", delta="Low Match", delta_color="inverse")
-                            st.error(":material/warning: Check Requirements")
-                        st.write(f"**Career:** {item['career']}")
 
-show()
+if st.session_state.get('go_to_rec'):
+    st.session_state['go_to_rec'] = False
+    st.switch_page("pages/recommendations.py")
